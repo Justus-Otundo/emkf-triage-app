@@ -1,70 +1,68 @@
 # EMKF Paramedic Triage Intake App
 
-A Flutter-based mobile application for emergency paramedics to log critical patient triage data under pressure, with an offline-first architecture that guarantees zero data loss when network connectivity is unstable or unavailable.
+A Flutter app for paramedics to log patient triage data quickly, even when there's no network. Saves locally first, syncs when connectivity comes back — zero data loss.
 
-## Architecture Overview
+## Project Structure
 
 ```
 lib/
-├── core/                       # Shared infrastructure
-│   ├── constants/              # App-wide constants (endpoints, timeouts)
-│   ├── errors/                 # Failure & exception types
-│   ├── network/                # Dio HTTP client, connectivity monitoring
-│   ├── theme/                  # Material3 theme, priority hazard colors
-│   └── utils/                  # Result type, typedefs
+├── core/                    # Stuff shared across the app
+│   ├── constants/           # Endpoints, timeouts, box names
+│   ├── errors/              # Failures and exceptions
+│   ├── network/             # HTTP client + connectivity checks
+│   ├── theme/               # Colors, typography, component styles
+│   └── utils/               # Result type, typedefs
 ├── features/
-│   ├── triage/                 # Triage intake feature (bounded context)
-│   │   ├── data/               # Local (Hive) + remote (mock) datasources
-│   │   ├── domain/             # TriageRecord entity + repository contract
-│   │   └── presentation/       # BLoC, form page, form widgets
-│   └── sync/                   # Sync engine feature (cross-cutting)
-│       ├── data/               # Sync queue datasource
-│       ├── domain/             # SyncQueueManager, SyncService
-│       └── presentation/       # Sync status indicator widget
-├── injection/                  # GetIt dependency injection
-├── app.dart                    # MaterialApp root with BLoC provider
-└── main.dart                   # Entry point — Hive init, DI, sync start
+│   ├── triage/              # The main feature — triage intake
+│   │   ├── data/            # Hive storage + mock API
+│   │   ├── domain/          # TriageRecord model + repository interface
+│   │   └── presentation/    # BLoC, form page, input widgets
+│   └── sync/                # Offline sync engine
+│       ├── data/            # Queue datasource (same Hive box as triage)
+│       ├── domain/          # SyncQueueManager + SyncService
+│       └── presentation/    # Sync status indicator
+├── injection/               # GetIt wiring
+├── app.dart                 # Root widget with BLoC provider
+└── main.dart                # Entry point — init Hive, DI, start sync
 ```
 
-### Architectural Decisions
+### Why these choices
 
-| Concern | Choice | Rationale |
-|---|---|---|
-| State management | BLoC | Production-grade, widely used in Flutter shops across East Africa; enforces unidirectional data flow and clean separation |
-| Local storage | Hive | Lightweight, no native deps, fast read/write, perfect for single-device offline queues |
-| DI | GetIt | Simple, fast, no code generation; keeps the DI layer explicit |
-| Network monitoring | connectivity_plus | Cross-platform, stream-based API, stable |
-| HTTP client | Dio | Interceptors, timeout config, clean error mapping |
-| Architecture | Clean Architecture (feature-first) | Separates UI from business logic from data; each feature is independently testable and swappable |
+| What | Why |
+|---|---|
+| BLoC | Unidirectional data flow, clean separation, widely used in Flutter shops around East Africa |
+| Hive | Lightweight, no native dependencies, fast, perfect for offline queues on a single device |
+| GetIt | Simple DI, no code generation, keeps things explicit |
+| connectivity_plus | Cross-platform, stream-based, just works |
+| Dio | Interceptors, timeout config, clean error handling |
+| Feature-first Clean Architecture | Each feature is self-contained, testable, and swappable |
 
-## Offline-First Sync Engine
+## How the Offline Sync Works
 
-This is the most critical piece of the system.
+This is the heart of the app.
 
-### How It Works
+1. **Save first, ask questions later** — When the paramedic taps submit, the record goes to Hive immediately. Then we try the remote call.
 
-1. **Interception**: When the paramedic taps "Submit", the repository saves the record to Hive *first*, then attempts a remote POST.
+2. **Flag system** — Every record has a `synced` boolean. If the device is offline when submitted, that flag stays `false`.
 
-2. **Local persistence**: Every record is persisted in a Hive box (`triage_records`) with a `synced` boolean flag. If the device is offline when submission happens, the flag stays `false`.
+3. **Connectivity watcher** — `SyncQueueManager` listens to connectivity changes. When the device goes from offline → online, it kicks off queue processing.
 
-3. **Connectivity listener**: The `SyncQueueManager` subscribes to `connectivity_plus` stream events. When connectivity transitions from disconnected → connected, the manager triggers `_processQueue()`.
+4. **Batch upload** — It grabs all records where `synced == false`, submits each one to the mock API, and flips the flag to `true` in-place. If one fails, it stops and waits for the next retry.
 
-4. **Queue processing**: `_processQueue()` fetches all records where `synced == false` from Hive, iterates through them, submits each to the mock API, and updates the record's `synced` flag to `true` in-place. If a record fails, processing stops and retries on the next connectivity event or periodic timer. A `syncComplete` stream notifies the UI to refresh the pending records section and show a green toast.
+5. **Safety net** — A 30-second timer periodically checks the queue, just in case the connectivity event gets missed.
 
-5. **Periodic retry**: A 30-second `Timer.periodic` ensures the queue eventually drains even if connectivity events are missed.
+6. **UI feedback** — After sync completes, a stream notifies the form page to refresh the pending list and show a green toast.
 
-6. **Lifecycle safety**: `startListening()` and `stopListening()` manage the connectivity subscription. The manager can be safely started in `main()` and does not freeze the UI during sync.
-
-### Sync Flow Diagram
+### Flow
 
 ```
-[Submit] → save to Hive → online? → yes → POST /api/v1/triage → mark synced → ✓ green toast
+Submit → save to Hive → online? → yes → POST /api/v1/triage → mark synced → green toast
                             ↓ no
-                      saved offline (synced=false) → ✓ amber toast
+                      saved offline (synced=false) → amber toast
                             ↓
-               connectivity restored? → SyncQueueManager._processQueue()
+               Wifi comes back? → SyncQueueManager processes queue
                             ↓ yes
-                   upload pending → mark synced in-place → ✓ green toast + UI refresh
+                   upload pending → mark synced → green toast + UI refresh
 ```
 
 ## Getting Started
@@ -73,65 +71,56 @@ This is the most critical piece of the system.
 
 - Flutter SDK 3.11+ ([install](https://docs.flutter.dev/get-started/install))
 - Dart 3.11+
-- An Android emulator / iOS simulator or physical device
+- A device or emulator
 
 ### Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/emkf-triage-app.git
+git clone https://github.com/Justus-Otundo/emkf-triage-app.git
 cd emkf-triage-app
-
-# Get dependencies
 flutter pub get
-
-# Run the app
 flutter run
 ```
 
-### Running Tests
+### Tests
 
 ```bash
 flutter test
 ```
 
-### Building for Release
+20 unit tests covering entities, repository (online/offline/error), and BLoC (validation, submission, errors). Uses mocktail for mocking.
+
+### Building
 
 ```bash
 flutter build apk --release   # Android
-flutter build ios --release   # iOS (requires macOS)
+flutter build ios --release   # iOS (needs macOS)
 ```
 
-## Testing the Offline Sync
+## Testing the Offline Sync Yourself
 
-1. Launch the app on a device or emulator
-2. Enable Airplane Mode
-3. Fill in the triage form and tap "Submit" — you should see an amber toast: "Saved offline — will sync when connected"
-4. The app bar shows a pending sync badge with the count of unsynced records
-5. Disable Airplane Mode — the sync engine automatically uploads pending records
-6. You should see a green toast: "Pending records synced to server" and the badge disappears
+1. Open the app on your device
+2. Turn on Airplane Mode
+3. Fill the form and tap Submit — you'll see an amber toast "Saved offline — will sync when connected"
+4. Notice the sync badge in the app bar showing the count
+5. Turn off Airplane Mode — the engine auto-syncs
+6. Green toast "Pending records synced to server" appears and the badge goes away
 
-The mock remote datasource (`TriageRemoteDatasourceMock`) simulates a 2-second network delay with no artificial failures — if the device is online, the submission always succeeds, making the demo predictable.
+The mock API simulates a 2-second delay and always succeeds when you're online, so the demo is predictable.
 
-## Testing Strategy
+## What's Missing (On Purpose)
 
-- **Unit tests**: 20 tests covering entities, repository (online/offline/error paths), BLoC (validation, submission, error states)
-- **Mocking**: mocktail for all dependency mocking
-- **Test structure**: mirrors the `lib/` layout — one test file per source file
-
-## What's Not Included
-
-- A real backend server — the assessment specifies this is not required. The mock remote datasource simulates a 2-second network delay
-- CI/CD pipeline — add GitHub Actions or GitLab CI for automated testing
-- Crash reporting / analytics — integrate Sentry or Firebase Crashlytics for production
-- The demo video — please record a 60-second clip showing offline save + auto-sync
+- A real backend — the assessment doesn't require one. The mock handles it.
+- CI/CD — easy to add GitHub Actions later
+- Crash reporting — Sentry or Firebase Crashlytics for production
+- The demo video — you'll record a 60s clip showing offline save + sync
 
 ## Built With
 
-- [Flutter](https://flutter.dev) — UI toolkit
-- [BLoC](https://bloclibrary.dev) — State management
-- [Hive](https://docs.hivedb.dev) — Local storage
-- [get_it](https://pub.dev/packages/get_it) — Dependency injection
-- [connectivity_plus](https://pub.dev/packages/connectivity_plus) — Network monitoring
-- [Dio](https://pub.dev/packages/dio) — HTTP client
-- [mocktail](https://pub.dev/packages/mocktail) — Testing mocks
+- [Flutter](https://flutter.dev)
+- [BLoC](https://bloclibrary.dev)
+- [Hive](https://docs.hivedb.dev)
+- [get_it](https://pub.dev/packages/get_it)
+- [connectivity_plus](https://pub.dev/packages/connectivity_plus)
+- [Dio](https://pub.dev/packages/dio)
+- [mocktail](https://pub.dev/packages/mocktail)
