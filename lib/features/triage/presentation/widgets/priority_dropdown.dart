@@ -1,24 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:emkf_triage_app/core/theme/triage_colors.dart';
 
-class PriorityDropdown extends StatelessWidget {
+class PrioritySelector extends StatelessWidget {
   final int? value;
   final String? errorText;
-  final ValueChanged<int?> onChanged;
+  final ValueChanged<int> onChanged;
 
-  const PriorityDropdown({
+  const PrioritySelector({
     super.key,
     required this.value,
     this.errorText,
     required this.onChanged,
   });
 
-  static const _priorityLabels = {
-    1: '1 — Critical (Life-threatening)',
-    2: '2 — Emergency (High risk)',
-    3: '3 — Urgent (Moderate)',
-    4: '4 — Semi-urgent (Stable)',
-    5: '5 — Non-urgent (Minor)',
+  static const _labels = {
+    1: 'Critical',
+    2: 'Emergency',
+    3: 'Urgent',
+    4: 'Semi-Urgent',
+    5: 'Non-Urgent',
+  };
+
+  static const _subLabels = {
+    1: 'Life-threatening',
+    2: 'High risk',
+    3: 'Moderate',
+    4: 'Stable',
+    5: 'Minor',
   };
 
   @override
@@ -26,49 +34,77 @@ class PriorityDropdown extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DropdownButtonFormField<int>(
-          // ignore: deprecated_member_use
-          value: value,
-          decoration: InputDecoration(
-            labelText: 'Priority Level',
-            prefixIcon: const Icon(Icons.warning_amber_rounded),
-            errorText: errorText,
-          ),
-          items: List.generate(5, (i) {
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: List.generate(5, (i) {
             final priority = i + 1;
+            final selected = value == priority;
             final color = TriageColors.priorityColor(priority);
-            return DropdownMenuItem(
-              value: priority,
-              child: Row(
-                children: [
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                    ),
+
+            return GestureDetector(
+              onTap: () => onChanged(priority),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: (MediaQuery.of(context).size.width - 56) / 5,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: selected ? color : color.withAlpha(20),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: selected ? color : color.withAlpha(60),
+                    width: selected ? 2 : 1,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _priorityLabels[priority]!,
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      '$priority',
                       style: TextStyle(
-                        fontSize: 14,
-                        color: priority <= 2
-                            ? TriageColors.criticalRed
-                            : null,
-                        fontWeight:
-                            priority <= 2 ? FontWeight.w600 : null,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: selected ? Colors.white : color,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    Text(
+                      _labels[priority]!,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: selected ? Colors.white : color,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
               ),
             );
           }),
-          onChanged: onChanged,
         ),
+        if (value != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 4),
+            child: Text(
+              _subLabels[value]!,
+              style: TextStyle(
+                fontSize: 13,
+                color: TriageColors.priorityColor(value!),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        if (errorText != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 4),
+            child: Text(
+              errorText!,
+              style: TextStyle(
+                fontSize: 12,
+                color: TriageColors.criticalRed,
+              ),
+            ),
+          ),
       ],
     );
   }
