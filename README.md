@@ -49,7 +49,7 @@ This is the most critical piece of the system.
 
 3. **Connectivity listener**: The `SyncQueueManager` subscribes to `connectivity_plus` stream events. When connectivity transitions from disconnected → connected, the manager triggers `_processQueue()`.
 
-4. **Queue processing**: `_processQueue()` fetches all records where `synced == false` from the sync queue, iterates through them, submits each to the mock API, and removes successfully synced records from the queue. If a record fails, processing stops and retries on the next connectivity event or periodic timer.
+4. **Queue processing**: `_processQueue()` fetches all records where `synced == false` from Hive, iterates through them, submits each to the mock API, and updates the record's `synced` flag to `true` in-place. If a record fails, processing stops and retries on the next connectivity event or periodic timer. A `syncComplete` stream notifies the UI to refresh the pending records section and show a green toast.
 
 5. **Periodic retry**: A 30-second `Timer.periodic` ensures the queue eventually drains even if connectivity events are missed.
 
@@ -58,13 +58,13 @@ This is the most critical piece of the system.
 ### Sync Flow Diagram
 
 ```
-[Submit] → save to Hive → online? → yes → POST /api/v1/triage → mark synced
-                           ↓ no
-                     saved offline (synced=false)
-                           ↓
-              connectivity restored? → SyncQueueManager._processQueue()
-                           ↓ yes
-                  batch upload pending records → mark synced
+[Submit] → save to Hive → online? → yes → POST /api/v1/triage → mark synced → ✓ green toast
+                            ↓ no
+                      saved offline (synced=false) → ✓ amber toast
+                            ↓
+               connectivity restored? → SyncQueueManager._processQueue()
+                            ↓ yes
+                   upload pending → mark synced in-place → ✓ green toast + UI refresh
 ```
 
 ## Getting Started
@@ -106,11 +106,12 @@ flutter build ios --release   # iOS (requires macOS)
 
 1. Launch the app on a device or emulator
 2. Enable Airplane Mode
-3. Fill in the triage form and tap "Submit" — you should see an amber snackbar: "Record saved offline — will sync when connected"
-4. Disable Airplane Mode — the sync engine will automatically upload the pending record
-5. You should see a green snackbar: "Record submitted and synced"
+3. Fill in the triage form and tap "Submit" — you should see an amber toast: "Saved offline — will sync when connected"
+4. The app bar shows a pending sync badge with the count of unsynced records
+5. Disable Airplane Mode — the sync engine automatically uploads pending records
+6. You should see a green toast: "Pending records synced to server" and the badge disappears
 
-The mock remote datasource (`TriageRemoteDatasourceMock`) introduces a random 50% failure rate, so you may need a few attempts to observe a successful online submission.
+The mock remote datasource (`TriageRemoteDatasourceMock`) simulates a 2-second network delay with no artificial failures — if the device is online, the submission always succeeds, making the demo predictable.
 
 ## Testing Strategy
 
@@ -120,7 +121,7 @@ The mock remote datasource (`TriageRemoteDatasourceMock`) introduces a random 50
 
 ## What's Not Included
 
-- A real backend server — the assessment specifies this is not required. The mock remote datasource simulates 2-second delay + random failures
+- A real backend server — the assessment specifies this is not required. The mock remote datasource simulates a 2-second network delay
 - CI/CD pipeline — add GitHub Actions or GitLab CI for automated testing
 - Crash reporting / analytics — integrate Sentry or Firebase Crashlytics for production
 - The demo video — please record a 60-second clip showing offline save + auto-sync
