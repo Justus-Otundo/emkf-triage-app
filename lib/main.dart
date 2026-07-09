@@ -20,5 +20,9 @@ void main() async {
   final syncManager = sl<SyncQueueManager>();
   syncManager.startListening();
 
+  AppLifecycleListener(
+    onResume: () => syncManager.processNow(),
+  );
+
   runApp(const TriageApp());
 }

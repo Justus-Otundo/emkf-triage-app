@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:emkf_triage_app/core/constants/app_constants.dart';
 import 'package:emkf_triage_app/core/errors/exceptions.dart';
 import 'package:emkf_triage_app/core/network/api_client.dart';
@@ -30,9 +31,21 @@ class TriageRemoteDatasourceImpl implements TriageRemoteDatasource {
 }
 
 class TriageRemoteDatasourceMock implements TriageRemoteDatasource {
+  final Random _random = Random();
+
+  /// Probability of simulated network failure (0.0–1.0).
+  /// Set to 0 for consistent demos, >0 to prove sync queue retry logic.
+  final double failureProbability;
+
+  TriageRemoteDatasourceMock({this.failureProbability = AppConstants.mockFailureProbability});
+
   @override
   Future<JsonMap> submitRecord(TriageRecordModel record) async {
     await Future.delayed(AppConstants.mockDelay);
+
+    if (failureProbability > 0 && _random.nextDouble() < failureProbability) {
+      throw ServerException('Simulated network failure — record queued for retry');
+    }
 
     return {
       'success': true,
