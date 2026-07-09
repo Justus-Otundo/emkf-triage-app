@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:emkf_triage_app/core/theme/triage_colors.dart';
@@ -9,6 +10,8 @@ import 'package:emkf_triage_app/features/triage/presentation/widgets/condition_f
 import 'package:emkf_triage_app/features/triage/presentation/widgets/patient_name_field.dart';
 import 'package:emkf_triage_app/features/triage/presentation/widgets/priority_dropdown.dart';
 import 'package:emkf_triage_app/features/triage/presentation/widgets/status_selector.dart';
+import 'package:emkf_triage_app/features/sync/domain/sync_queue_manager.dart';
+import 'package:emkf_triage_app/injection/injection_container.dart';
 
 class TriageFormPage extends StatefulWidget {
   const TriageFormPage({super.key});
@@ -31,6 +34,7 @@ class _TriageFormPageState extends State<TriageFormPage>
 
   late final AnimationController _slideController;
   late final Animation<Offset> _slideAnimation;
+  StreamSubscription<void>? _syncSub;
 
   @override
   void initState() {
@@ -40,17 +44,33 @@ class _TriageFormPageState extends State<TriageFormPage>
       duration: const Duration(milliseconds: 400),
     );
     _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.05),
+      begin: const Offset(0, 0.04),
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _slideController,
       curve: Curves.easeOut,
     ));
     _slideController.forward();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<TriageBloc>().add(LoadPendingRecords());
+      _syncSub = sl<SyncQueueManager>().syncComplete.listen((_) {
+        if (mounted) {
+          context.read<TriageBloc>().add(LoadPendingRecords());
+          _showToast(
+            context,
+            'Pending records synced to server',
+            TriageColors.brandGreen,
+            Icons.cloud_done_outlined,
+          );
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
+    _syncSub?.cancel();
     _nameController.dispose();
     _conditionController.dispose();
     _slideController.dispose();
@@ -59,13 +79,17 @@ class _TriageFormPageState extends State<TriageFormPage>
 
   void _submit() {
     setState(() {
-      _nameError = _nameController.text.trim().isEmpty ? 'Patient name is required' : null;
-      _conditionError =
-          _conditionController.text.trim().isEmpty ? 'Condition description is required' : null;
+      _nameError =
+          _nameController.text.trim().isEmpty ? 'Patient name is required' : null;
+      _conditionError = _conditionController.text.trim().isEmpty
+          ? 'Condition description is required'
+          : null;
       _priorityError = _selectedPriority == null ? 'Select a priority level' : null;
     });
 
-    if (_nameError != null || _conditionError != null || _priorityError != null) {
+    if (_nameError != null ||
+        _conditionError != null ||
+        _priorityError != null) {
       return;
     }
 
@@ -108,6 +132,7 @@ class _TriageFormPageState extends State<TriageFormPage>
             Icons.check_circle_outline,
           );
           _resetForm();
+          context.read<TriageBloc>().add(LoadPendingRecords());
         }
         if (state is TriageError) {
           _showToast(
@@ -124,73 +149,118 @@ class _TriageFormPageState extends State<TriageFormPage>
         return GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: Scaffold(
-            backgroundColor: TriageColors.scaffoldBg,
+            backgroundColor: TriageColors.neutralBg,
             appBar: AppBar(
               title: Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   Image.asset(
                     'assets/logo.png',
                     height: 26,
                     fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: TriageColors.brandRed,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        'E',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 10),
-                  const Text(
-                    'Triage Intake',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'EMKF Triage',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: TriageColors.neutralTextPrimary,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      Text(
+                        'Intake Form',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: TriageColors.neutralTextTertiary,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
               actions: [
                 _SyncBadge(state: state),
+                const SizedBox(width: 4),
               ],
             ),
             body: SafeArea(
               child: SingleChildScrollView(
                 physics: const ClampingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                 child: SlideTransition(
                   position: _slideAnimation,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _HeaderSection(
+                      _PageHeader(
                         selectedPriority: _selectedPriority,
                         selectedStatus: _selectedStatus,
-                        name: _nameController.text,
-                        condition: _conditionController.text,
                       ),
                       const SizedBox(height: 20),
-                      _SectionCard(
+                      _FormSection(
                         icon: Icons.person_outline,
-                        title: 'Patient Details',
+                        title: 'Patient Information',
+                        subtitle: 'Personal details and presenting condition',
                         children: [
                           PatientNameField(
                             controller: _nameController,
                             errorText: _nameError,
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 14),
                           ConditionField(
                             controller: _conditionController,
                             errorText: _conditionError,
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      _SectionCard(
+                      const SizedBox(height: 14),
+                      _FormSection(
                         icon: Icons.warning_amber_rounded,
                         title: 'Triage Assessment',
+                        subtitle: 'Clinical priority and transport status',
                         children: [
-                          const Text(
-                            'Priority Level',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black87,
-                            ),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.trip_origin,
+                                size: 10,
+                                color: TriageColors.neutralTextTertiary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Priority Level',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: TriageColors.neutralTextSecondary,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 10),
                           PrioritySelector(
@@ -203,33 +273,43 @@ class _TriageFormPageState extends State<TriageFormPage>
                               });
                             },
                           ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            'Transport Status',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black87,
-                            ),
+                          const SizedBox(height: 22),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.local_hospital,
+                                size: 10,
+                                color: TriageColors.neutralTextTertiary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Transport Status',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: TriageColors.neutralTextSecondary,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 10),
                           StatusSelector(
                             value: _selectedStatus,
                             onChanged: (value) {
-                              if (value != null) {
-                                setState(() => _selectedStatus = value);
-                              }
+                              setState(() => _selectedStatus = value);
                             },
                           ),
                         ],
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 22),
                       _SubmitButton(
                         isSubmitting: isSubmitting,
                         onPressed: _submit,
                       ),
                       const SizedBox(height: 24),
                       _PendingRecordsSection(state: state),
+                      const SizedBox(height: 16),
                     ],
                   ),
                 ),
@@ -241,194 +321,214 @@ class _TriageFormPageState extends State<TriageFormPage>
     );
   }
 
-  void _showToast(BuildContext context, String message, Color color, IconData icon) {
+  void _showToast(
+      BuildContext context, String message, Color color, IconData icon) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
+    late AnimationController animController;
+    late Animation<Offset> slideAnim;
+    late Animation<double> fadeAnim;
+
+    animController = AnimationController(
+      vsync: Navigator.of(context),
+      duration: const Duration(milliseconds: 300),
+    );
+    slideAnim = Tween<Offset>(
+      begin: const Offset(0, -1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: animController,
+      curve: Curves.easeOutCubic,
+    ));
+    fadeAnim = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(
+      parent: animController,
+      curve: Curves.easeOut,
+    ));
+
     entry = OverlayEntry(
-      builder: (_) => Positioned(
-        top: MediaQuery.of(context).padding.top + 80,
-        left: 16,
-        right: 16,
-        child: Material(
-          elevation: 6,
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(12),
+      builder: (_) => AnimatedBuilder(
+        animation: animController,
+        builder: (context, child) {
+          return Opacity(
+            opacity: fadeAnim.value,
+            child: FractionalTranslation(
+              translation: slideAnim.value,
+              child: child,
             ),
-            child: Row(
-              children: [
-                Icon(icon, color: Colors.white, size: 22),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    message,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+          );
+        },
+        child: Positioned(
+          top: MediaQuery.of(context).padding.top + 12,
+          left: 16,
+          right: 16,
+          child: Material(
+            elevation: 8,
+            shadowColor: color.withAlpha(80),
+            borderRadius: BorderRadius.circular(12),
+            color: Colors.transparent,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(icon, color: Colors.white, size: 22),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      message,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        height: 1.3,
+                      ),
                     ),
                   ),
-                ),
-                GestureDetector(
-                  onTap: () => entry.remove(),
-                  child: const Icon(Icons.close, color: Colors.white70, size: 18),
-                ),
-              ],
+                  GestureDetector(
+                    onTap: () {
+                      animController.reverse().then((_) => entry.remove());
+                    },
+                    child: const Icon(Icons.close, color: Colors.white60, size: 18),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
+
     overlay.insert(entry);
-    Future.delayed(const Duration(seconds: 3), () {
-      if (entry.mounted) entry.remove();
+    animController.forward();
+
+    Future.delayed(const Duration(seconds: 4), () {
+      if (entry.mounted) {
+        animController.reverse().then((_) {
+          if (entry.mounted) entry.remove();
+        });
+      }
     });
   }
 }
 
-class _SectionCard extends StatelessWidget {
+class _PageHeader extends StatelessWidget {
+  final int? selectedPriority;
+  final TriageStatus selectedStatus;
+
+  const _PageHeader({
+    required this.selectedPriority,
+    required this.selectedStatus,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Text(
+          'New Triage Record',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: TriageColors.neutralTextPrimary,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Complete the patient intake form below',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
+            color: TriageColors.neutralTextSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FormSection extends StatelessWidget {
   final IconData icon;
   final String title;
+  final String subtitle;
   final List<Widget> children;
 
-  const _SectionCard({
+  const _FormSection({
     required this.icon,
     required this.title,
+    required this.subtitle,
     required this.children,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
+    return Container(
+      decoration: BoxDecoration(
+        color: TriageColors.neutralSurface,
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: Colors.grey.shade200),
+        border: Border.all(color: TriageColors.neutralBorder),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+            child: Row(
               children: [
-                Icon(icon, size: 18, color: TriageColors.brandRed),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: TriageColors.brandRed.withAlpha(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
+                  child: Icon(icon, size: 17, color: TriageColors.brandRed),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: TriageColors.neutralTextPrimary,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: TriageColors.neutralTextTertiary,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HeaderSection extends StatelessWidget {
-  final int? selectedPriority;
-  final TriageStatus selectedStatus;
-  final String name;
-  final String condition;
-
-  const _HeaderSection({
-    required this.selectedPriority,
-    required this.selectedStatus,
-    required this.name,
-    required this.condition,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (selectedPriority == null) return const SizedBox.shrink();
-
-    final isCritical = selectedPriority! <= 2;
-    final color = TriageColors.priorityColor(selectedPriority!);
-    final bgColor = TriageColors.priorityBgColor(selectedPriority!);
-    final label = selectedPriority == 1
-        ? 'CRITICAL — Immediate attention required'
-        : selectedPriority == 2
-            ? 'EMERGENCY — High priority case'
-            : 'Priority $selectedPriority — Stable condition';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: bgColor,
-        border: Border.all(color: color.withAlpha(120), width: 1.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: color.withAlpha(30),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              isCritical ? Icons.error_outline : Icons.check_circle_outline,
-              color: color,
-              size: 20,
+          ),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: Divider(
+              color: TriageColors.neutralBorder.withAlpha(120),
+              height: 1,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
+          Padding(
+            padding: const EdgeInsets.all(18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                ),
-                if (name.isNotEmpty)
-                  Text(
-                    name,
-                    style: TextStyle(
-                      color: color.withAlpha(200),
-                      fontSize: 12,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: selectedStatus == TriageStatus.pending
-                  ? Colors.orange.shade100
-                  : Colors.blue.shade100,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              selectedStatus == TriageStatus.pending ? 'Pending' : 'In-Transit',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: selectedStatus == TriageStatus.pending
-                    ? Colors.orange.shade800
-                    : Colors.blue.shade800,
-              ),
+              children: children,
             ),
           ),
         ],
@@ -448,31 +548,57 @@ class _SubmitButton extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       height: 54,
-      child: ElevatedButton.icon(
+      child: ElevatedButton(
         onPressed: isSubmitting ? null : onPressed,
-        icon: isSubmitting
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(Icons.send_rounded, size: 20),
-        label: Text(
-          isSubmitting ? 'Submitting...' : 'Submit Triage Record',
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
         style: ElevatedButton.styleFrom(
           backgroundColor: TriageColors.brandRed,
           foregroundColor: Colors.white,
-          elevation: 2,
-          shadowColor: TriageColors.brandRed.withAlpha(80),
+          disabledBackgroundColor: TriageColors.neutralDisabled,
+          disabledForegroundColor: Colors.white60,
+          elevation: 0,
+          shadowColor: TriageColors.brandRed.withAlpha(60),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
+        child: isSubmitting
+            ? Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Submitting...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.send_rounded, size: 18),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Submit Triage Record',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -490,13 +616,13 @@ class _SyncBadge extends StatelessWidget {
     if (pending.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.only(right: 4),
       child: Tooltip(
         message: '${pending.length} record(s) pending sync',
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: TriageColors.moderateAmber.withAlpha(30),
+            color: TriageColors.moderateAmberLight,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: TriageColors.moderateAmber.withAlpha(80),
@@ -508,7 +634,7 @@ class _SyncBadge extends StatelessWidget {
               Icon(
                 Icons.cloud_upload_outlined,
                 size: 14,
-                color: Colors.amber.shade700,
+                color: TriageColors.moderateAmber,
               ),
               const SizedBox(width: 4),
               Text(
@@ -516,7 +642,7 @@ class _SyncBadge extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: Colors.amber.shade800,
+                  color: TriageColors.moderateAmber,
                 ),
               ),
             ],
@@ -543,39 +669,75 @@ class _PendingRecordsSection extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(Icons.history, size: 16, color: Colors.grey.shade600),
-            const SizedBox(width: 6),
-            Text(
-              'Pending Sync',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade700,
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: TriageColors.moderateAmber.withAlpha(20),
+                borderRadius: BorderRadius.circular(7),
               ),
+              child: Icon(
+                Icons.cloud_upload_outlined,
+                size: 16,
+                color: TriageColors.moderateAmber,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pending Sync',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: TriageColors.neutralTextPrimary,
+                  ),
+                ),
+                Text(
+                  '${records.length} record(s) waiting to be uploaded',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
+                    color: TriageColors.neutralTextTertiary,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         ...records.take(3).map(
               (r) => Container(
-                margin: const EdgeInsets.only(bottom: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                margin: const EdgeInsets.only(bottom: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: TriageColors.neutralSurface,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.grey.shade200),
+                  border: Border.all(color: TriageColors.neutralBorder),
                 ),
                 child: Row(
                   children: [
                     Container(
-                      width: 8,
-                      height: 8,
+                      width: 36,
+                      height: 36,
                       decoration: BoxDecoration(
-                        color: TriageColors.priorityColor(r.priority),
-                        shape: BoxShape.circle,
+                        color: TriageColors.priorityBgColor(r.priority),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'P${r.priority}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: TriageColors.priorityColor(r.priority),
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -585,13 +747,15 @@ class _PendingRecordsSection extends StatelessWidget {
                             style: const TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 13,
+                              color: TriageColors.neutralTextPrimary,
                             ),
                           ),
+                          const SizedBox(height: 2),
                           Text(
                             r.conditionDescription,
                             style: TextStyle(
                               fontSize: 11,
-                              color: Colors.grey.shade600,
+                              color: TriageColors.neutralTextTertiary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -599,10 +763,21 @@ class _PendingRecordsSection extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Icon(
-                      Icons.cloud_outlined,
-                      size: 16,
-                      color: Colors.grey.shade400,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: TriageColors.moderateAmberLight,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Pending',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: TriageColors.moderateAmber,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -612,3 +787,5 @@ class _PendingRecordsSection extends StatelessWidget {
     );
   }
 }
+
+

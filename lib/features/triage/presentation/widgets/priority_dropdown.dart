@@ -13,99 +13,191 @@ class PrioritySelector extends StatelessWidget {
     required this.onChanged,
   });
 
-  static const _labels = {
-    1: 'Critical',
-    2: 'Emergency',
-    3: 'Urgent',
-    4: 'Semi-Urgent',
-    5: 'Non-Urgent',
-  };
-
-  static const _subLabels = {
-    1: 'Life-threatening',
-    2: 'High risk',
-    3: 'Moderate',
-    4: 'Stable',
-    5: 'Minor',
-  };
-
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: List.generate(5, (i) {
-            final priority = i + 1;
-            final selected = value == priority;
-            final color = TriageColors.priorityColor(priority);
+        ...List.generate(5, (i) {
+          final priority = i + 1;
+          final selected = value == priority;
+          final color = TriageColors.priorityColor(priority);
+          final bgColor = TriageColors.priorityBgColor(priority);
 
-            return GestureDetector(
+          return Padding(
+            padding: EdgeInsets.only(bottom: i < 4 ? 8 : 0),
+            child: _PriorityTile(
+              priority: priority,
+              label: TriageColors.priorityLabel(priority),
+              description: TriageColors.priorityDescription(priority),
+              color: color,
+              bgColor: bgColor,
+              selected: selected,
               onTap: () => onChanged(priority),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: (MediaQuery.of(context).size.width - 56) / 5,
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: selected ? color : color.withAlpha(20),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: selected ? color : color.withAlpha(60),
-                    width: selected ? 2 : 1,
+            ),
+          );
+        }),
+        if (errorText != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Row(
+              children: [
+                Icon(Icons.error_outline, size: 14, color: TriageColors.criticalRed),
+                const SizedBox(width: 4),
+                Text(
+                  errorText!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: TriageColors.criticalRed,
                   ),
                 ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _PriorityTile extends StatelessWidget {
+  final int priority;
+  final String label;
+  final String description;
+  final Color color;
+  final Color bgColor;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PriorityTile({
+    required this.priority,
+    required this.label,
+    required this.description,
+    required this.color,
+    required this.bgColor,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: selected ? bgColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? color : TriageColors.neutralBorder,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              _RadioIndicator(selected: selected, color: color),
+              const SizedBox(width: 14),
+              Expanded(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '$priority',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: selected ? Colors.white : color,
-                      ),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: selected ? color : color.withAlpha(30),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'P$priority',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: selected ? Colors.white : color,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: selected
+                                ? TriageColors.neutralTextPrimary
+                                : TriageColors.neutralTextSecondary,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
-                      _labels[priority]!,
+                      description,
                       style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                        color: selected ? Colors.white : color,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: selected
+                            ? TriageColors.neutralTextSecondary
+                            : TriageColors.neutralTextTertiary,
+                        height: 1.3,
                       ),
-                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
               ),
-            );
-          }),
+              if (selected)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Icon(Icons.check_circle, size: 20, color: color),
+                ),
+            ],
+          ),
         ),
-        if (value != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8, left: 4),
-            child: Text(
-              _subLabels[value]!,
-              style: TextStyle(
-                fontSize: 13,
-                color: TriageColors.priorityColor(value!),
-                fontWeight: FontWeight.w500,
+      ),
+    );
+  }
+}
+
+class _RadioIndicator extends StatelessWidget {
+  final bool selected;
+  final Color color;
+
+  const _RadioIndicator({required this.selected, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: selected ? color : TriageColors.neutralDisabled,
+          width: selected ? 2 : 1.5,
+        ),
+        color: selected ? color.withAlpha(25) : Colors.transparent,
+      ),
+      child: selected
+          ? Center(
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color,
+                ),
               ),
-            ),
-          ),
-        if (errorText != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 4, left: 4),
-            child: Text(
-              errorText!,
-              style: TextStyle(
-                fontSize: 12,
-                color: TriageColors.criticalRed,
-              ),
-            ),
-          ),
-      ],
+            )
+          : null,
     );
   }
 }

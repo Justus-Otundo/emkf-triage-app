@@ -14,7 +14,6 @@ void main() async {
   Hive.registerAdapter(TriageRecordModelAdapter());
 
   await Hive.openBox<TriageRecordModel>(AppConstants.triageBoxName);
-  await Hive.openBox<TriageRecordModel>(AppConstants.syncBoxName);
 
   await initDependencies();
 

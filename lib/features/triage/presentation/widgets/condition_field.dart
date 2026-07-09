@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:emkf_triage_app/core/theme/triage_colors.dart';
 
 class ConditionField extends StatelessWidget {
   final TextEditingController controller;
@@ -15,13 +16,24 @@ class ConditionField extends StatelessWidget {
     return TextFormField(
       controller: controller,
       decoration: InputDecoration(
-        labelText: 'Condition Description',
-        hintText: 'Describe the patient\'s condition...',
-        prefixIcon: const Icon(Icons.medical_services_outlined),
+        labelText: 'Condition description',
+        hintText: 'Describe symptoms, vital signs, and clinical findings...',
+        prefixIcon: Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Icon(
+            Icons.assignment_outlined,
+            size: 20,
+            color: errorText != null
+                ? TriageColors.criticalRed
+                : TriageColors.neutralTextTertiary,
+          ),
+        ),
+        prefixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 0),
         errorText: errorText,
         alignLabelWithHint: true,
       ),
       maxLines: 3,
+      minLines: 3,
       textCapitalization: TextCapitalization.sentences,
       textInputAction: TextInputAction.newline,
     );

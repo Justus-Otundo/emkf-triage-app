@@ -16,7 +16,7 @@ class SyncQueueDatasourceImpl implements SyncQueueDatasource {
   late final Box<TriageRecordModel> _box;
 
   SyncQueueDatasourceImpl() {
-    _box = Hive.box<TriageRecordModel>(AppConstants.syncBoxName);
+    _box = Hive.box<TriageRecordModel>(AppConstants.triageBoxName);
   }
 
   @override

@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:emkf_triage_app/core/constants/app_constants.dart';
 import 'package:emkf_triage_app/core/errors/exceptions.dart';
 import 'package:emkf_triage_app/core/network/api_client.dart';
@@ -31,18 +30,9 @@ class TriageRemoteDatasourceImpl implements TriageRemoteDatasource {
 }
 
 class TriageRemoteDatasourceMock implements TriageRemoteDatasource {
-  final Random _random = Random();
-
   @override
   Future<JsonMap> submitRecord(TriageRecordModel record) async {
     await Future.delayed(AppConstants.mockDelay);
-
-    if (_random.nextBool()) {
-      throw ServerException(
-        'Simulated network error — server unreachable',
-        statusCode: 503,
-      );
-    }
 
     return {
       'success': true,

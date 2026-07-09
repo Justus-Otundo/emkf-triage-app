@@ -14,6 +14,10 @@ class SyncQueueManager {
   bool _isSyncing = false;
   Timer? _retryTimer;
 
+  final StreamController<void> _syncCompleteController =
+      StreamController<void>.broadcast();
+  Stream<void> get syncComplete => _syncCompleteController.stream;
+
   SyncQueueManager({
     required SyncQueueDatasource queue,
     required TriageRemoteDatasource remoteDatasource,
@@ -46,6 +50,7 @@ class SyncQueueManager {
     _connectivitySub = null;
     _retryTimer?.cancel();
     _retryTimer = null;
+    _syncCompleteController.close();
   }
 
   Future<void> _processQueue() async {
@@ -71,11 +76,12 @@ class SyncQueueManager {
             synced: true,
           );
           await _queue.enqueue(updated);
-          await _queue.dequeue(record.id);
         } catch (_) {
           break;
         }
       }
+
+      _syncCompleteController.add(null);
     } finally {
       _isSyncing = false;
     }
