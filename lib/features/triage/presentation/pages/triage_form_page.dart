@@ -11,6 +11,7 @@ import 'package:emkf_triage_app/features/triage/presentation/widgets/patient_nam
 import 'package:emkf_triage_app/features/triage/presentation/widgets/priority_dropdown.dart';
 import 'package:emkf_triage_app/features/triage/presentation/widgets/status_selector.dart';
 import 'package:emkf_triage_app/features/sync/domain/sync_queue_manager.dart';
+import 'package:emkf_triage_app/features/triage/presentation/pages/records_page.dart';
 import 'package:emkf_triage_app/injection/injection_container.dart';
 
 class TriageFormPage extends StatefulWidget {
@@ -203,6 +204,20 @@ class _TriageFormPageState extends State<TriageFormPage>
                 ],
               ),
               actions: [
+                IconButton(
+                  icon: Icon(Icons.inbox_outlined,
+                      size: 22,
+                      color: TriageColors.neutralTextSecondary),
+                  tooltip: 'View Records',
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => BlocProvider.value(
+                        value: context.read<TriageBloc>(),
+                        child: const RecordsPage(),
+                      ),
+                    ),
+                  ),
+                ),
                 _SyncBadge(state: state),
                 const SizedBox(width: 4),
               ],
